@@ -2,8 +2,6 @@
 
 A self-hosted media centre application built for the Raspberry Pi CM5. Streams movies, TV series, anime, manga, comics, ebooks, and academic papers — all from a single app with no subscription required.
 
-![Mediabox UI](design/screen.png)
-
 ---
 
 ## What it does
@@ -156,4 +154,4 @@ mediabox/
 
 ## License
 
-MIT
+Apache-2.0
