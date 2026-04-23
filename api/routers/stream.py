@@ -1,14 +1,3 @@
-"""
-Stream router — proxy + Playwright-based resolution for movies and TV.
-
-GET /stream/proxy                             — m3u8 manifest proxy (shared)
-GET /stream/movie/{tmdb_id}                   — resolve movie streams (Playwright)
-GET /stream/series/{tmdb_id}/{s}/{ep}         — resolve TV episode streams (Playwright)
-
-title/year query params are accepted but no longer required — we use TMDB IDs
-directly via vidsrc.to, so there is no title-based search involved.
-"""
-
 from typing import Optional
 from urllib.parse import quote, urljoin
 
@@ -39,11 +28,6 @@ def get_moviesapi_service() -> MoviesAPIService:
 
 
 def _proxy_uri(uri: str, base_url: str, referer: Optional[str]) -> str:
-    """
-    Convert a URI (relative or absolute) into an /api/stream/proxy?url=...&referer=...
-    absolute-path URL.  hls.js resolves absolute-path URIs against the current
-    page origin, so /api/stream/proxy becomes http://<host>/api/stream/proxy.
-    """
     abs_url = uri if uri.startswith(("http://", "https://")) else urljoin(base_url, uri)
     result = f"/api/stream/proxy?url={quote(abs_url, safe='')}"
     if referer:
@@ -52,11 +36,6 @@ def _proxy_uri(uri: str, base_url: str, referer: Optional[str]) -> str:
 
 
 def _proxy_m3u8(content: str, base_url: str, referer: Optional[str]) -> str:
-    """
-    Rewrite every URI in an m3u8 manifest so that hls.js fetches all
-    quality-variant playlists, segments, and encryption keys through
-    /api/stream/proxy — which adds the required Referer header.
-    """
     import re
     lines = content.splitlines()
     out: list[str] = []
@@ -85,15 +64,6 @@ async def stream_proxy(
     referer: Optional[str] = Query(None),
     client: httpx.AsyncClient = Depends(get_http_client),
 ) -> Response:
-    """
-    Pass-through proxy that adds the required Referer/Origin headers.
-
-    For m3u8 manifests (master playlists, quality playlists) every URI is
-    rewritten to route back through this endpoint so the Referer propagates
-    through the full chain: master → quality playlists → segments → keys.
-
-    If the CDN is unreachable, falls back to a 302 redirect (direct fetch).
-    """
     headers: dict[str, str] = {"User-Agent": _UA}
     if referer:
         headers["Referer"] = referer
@@ -123,10 +93,6 @@ async def resolve_movie_stream(
     year: Optional[str] = Query(None),     # kept for frontend compat, not used
     service: MoviesAPIService = Depends(get_moviesapi_service),
 ) -> list[MediaStream]:
-    """
-    Resolve streams for a movie via ww2.moviesapi.to → flixcdn.cyou (pure-Python, no browser).
-    Uses the TMDB ID directly — no title search needed.
-    """
     streams = await service.resolve_movie(tmdb_id)
     if not streams:
         raise HTTPException(status_code=404, detail="No streams resolved for this movie")
@@ -142,10 +108,6 @@ async def resolve_series_stream(
     year: Optional[str] = Query(None),     # kept for frontend compat, not used
     service: MoviesAPIService = Depends(get_moviesapi_service),
 ) -> list[MediaStream]:
-    """
-    Resolve streams for a TV episode via ww2.moviesapi.to → flixcdn.cyou (pure-Python, no browser).
-    Uses the TMDB ID directly — no title search needed.
-    """
     streams = await service.resolve_tv(tmdb_id, season, episode)
     if not streams:
         raise HTTPException(status_code=404, detail="No streams resolved for this episode")

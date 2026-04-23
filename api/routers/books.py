@@ -46,14 +46,11 @@ def get_zlib_service() -> ZlibService:
     return zlib_service
 
 
-# serve jszip + epub.js locally so the WebEngineView never hits CDN
 _JS_CACHE: dict[str, bytes] = {}
-_JS_URLS = {
-    "jszip.min.js": "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js",
+_JS_URLS = {"jszip.min.js": "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js",
     "epub.min.js":  "https://cdn.jsdelivr.net/npm/epubjs/dist/epub.min.js",
 }
 
-# epub.js chokes on URLs with nested query params, so we swap them for a short token
 _read_tokens: dict[str, str] = {}  # token → real proxy URL
 
 

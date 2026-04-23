@@ -21,7 +21,6 @@ class SearchResponse(BaseModel, Generic[T]):
 
 
 class MovieMeta(BaseModel):
-    """Extra detail fetched on the movie info page."""
     backdrop_path: Optional[str] = None
     genres: list[str] = []
     runtime: Optional[int] = None
@@ -34,7 +33,6 @@ class MovieMeta(BaseModel):
 
 
 class SeriesMeta(BaseModel):
-    """Extra detail fetched on the series info page."""
     backdrop_path: Optional[str] = None
     genres: list[str] = []
     status: Optional[str] = None
@@ -316,7 +314,6 @@ class HistoryItemCreate(BaseModel):
 
 
 class HistoryItemResponse(BaseModel):
-    """What the API returns — includes the DB-generated fields."""
     id: int
     media_type: str
     title: str

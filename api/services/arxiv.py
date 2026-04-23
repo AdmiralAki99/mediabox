@@ -1,23 +1,3 @@
-"""
-ArxivService — papers via the official arXiv Atom API.
-
-No auth required.  Pure httpx + stdlib xml.etree.ElementTree.
-No new dependencies.
-
-API base: http://export.arxiv.org/api/query
-Docs:     https://info.arxiv.org/help/api/user-manual.html
-
-Endpoints exposed:
-  search(query, limit, offset)          free-text search across all fields
-  by_category(cat, limit, offset, sort) browse a category; sort=latest|updated
-  paper(arxiv_id)                       single paper by ID (includes full abstract)
-
-Atom XML namespaces:
-  Atom:       http://www.w3.org/2005/Atom
-  arXiv:      http://arxiv.org/schemas/atom
-  OpenSearch: http://a9.com/-/spec/opensearch/1.1/
-"""
-
 import logging
 import re
 import xml.etree.ElementTree as ET
@@ -68,12 +48,10 @@ _SORT_MAP = {
 
 
 def _clean_id(raw: str) -> str:
-    """Extract '2401.12345' from 'http://arxiv.org/abs/2401.12345v1'."""
     return re.sub(r"v\d+$", "", raw.split("/abs/")[-1]).strip()
 
 
 def _parse_entry(entry: ET.Element) -> ArxivPaper:
-    """Parse one <entry> element into an ArxivPaper."""
     def text(tag: str) -> str:
         return (entry.findtext(f"{{{_ATOM}}}{tag}") or "").strip()
 
@@ -137,7 +115,6 @@ def _parse_entry(entry: ET.Element) -> ArxivPaper:
 
 
 def _parse_feed(xml_bytes: bytes) -> tuple[int, list[ArxivPaper]]:
-    """Parse the full Atom feed.  Returns (total_results, papers)."""
     root = ET.fromstring(xml_bytes)
     total_el = root.find(f"{{{_OPEN}}}totalResults")
     total = int(total_el.text or 0) if total_el is not None else 0
@@ -165,7 +142,6 @@ class ArxivService:
         limit: int = 20,
         offset: int = 0,
     ) -> ArxivSearchResult:
-        """Free-text search.  Sorts by relevance."""
         key = f"arxiv:search:{query}:{limit}:{offset}"
         if (hit := cache.get(key)) is not None:
             return hit
@@ -188,7 +164,6 @@ class ArxivService:
         offset: int = 0,
         sort: str = "latest",
     ) -> ArxivSearchResult:
-        """Browse papers in a category.  sort=latest|updated."""
         sort_by, sort_order = _SORT_MAP.get(sort, _SORT_MAP["latest"])
         key = f"arxiv:cat:{category}:{limit}:{offset}:{sort}"
         if (hit := cache.get(key)) is not None:
@@ -206,7 +181,6 @@ class ArxivService:
         return result
 
     async def paper(self, arxiv_id: str) -> ArxivPaper:
-        """Fetch a single paper by its arXiv ID (e.g. '2401.12345')."""
         clean = _clean_id(arxiv_id)
         key = f"arxiv:paper:{clean}"
         if (hit := cache.get(key)) is not None:

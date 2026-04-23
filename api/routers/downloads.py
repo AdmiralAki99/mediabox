@@ -22,7 +22,6 @@ class DownloadCancelledError(Exception):
     pass
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def get_anipy_service() -> AnipyService:
     from main import anipy_service
@@ -30,12 +29,10 @@ def get_anipy_service() -> AnipyService:
 
 
 def _sanitize(name: str) -> str:
-    """Strip filesystem-unsafe characters from a path component."""
     return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name).strip() or "unknown"
 
 
 def _episode_str(episode: float) -> str:
-    """Format episode number: 1.0 → '1', 5.5 → '5.5'"""
     return str(int(episode)) if episode == int(episode) else str(episode)
 
 
@@ -54,12 +51,6 @@ async def _run_download(
     request: DownloadRequest,
     anipy: AnipyService,
 ) -> None:
-    """
-    Async background task that drives one episode download end-to-end.
-
-    Runs as a FastAPI BackgroundTask (on the event loop).  The actual
-    blocking I/O runs inside run_in_executor.
-    """
     loop = asyncio.get_event_loop()
     await _update_download(download_id, status="downloading")
 
@@ -121,7 +112,6 @@ async def _run_download(
         )
 
 
-# ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("", status_code=202, response_model=DownloadStatus)
 async def queue_download(
@@ -130,10 +120,6 @@ async def queue_download(
     db: AsyncSession = Depends(get_db),
     anipy: AnipyService = Depends(get_anipy_service),
 ) -> DownloadStatus:
-    """
-    Queue an anime episode download.  Returns 202 immediately; poll
-    GET /downloads/{id} for progress updates.
-    """
     row = Download(
         provider_name=request.provider_name,
         identifier=request.identifier,
@@ -155,7 +141,6 @@ async def queue_download(
 async def list_downloads(
     db: AsyncSession = Depends(get_db),
 ) -> list[DownloadStatus]:
-    """All downloads, newest first."""
     result = await db.execute(
         select(Download).order_by(Download.created_at.desc())
     )
@@ -169,7 +154,6 @@ async def get_download_file(
     download_id: int,
     db: AsyncSession = Depends(get_db),
 ) -> FileResponse:
-    """Stream the downloaded file to the client."""
     row = await db.get(Download, download_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Download not found")
@@ -186,7 +170,6 @@ async def get_download(
     download_id: int,
     db: AsyncSession = Depends(get_db),
 ) -> DownloadStatus:
-    """Fetch current status and progress for one download."""
     row = await db.get(Download, download_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Download not found")
@@ -198,15 +181,6 @@ async def cancel_download(
     download_id: int,
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    """
-    Cancel an in-progress download or delete a completed one.
-
-    - If downloading: signals the worker thread to stop, deletes the DB record.
-      The partial file is cleaned up by the background task when it catches
-      DownloadCancelledError.
-    - If completed: deletes the DB record and the file from disk.
-    - If queued/failed: deletes the DB record only.
-    """
     row = await db.get(Download, download_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Download not found")

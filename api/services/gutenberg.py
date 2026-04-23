@@ -1,11 +1,3 @@
-"""
-GutenbergService — search Project Gutenberg via gutendex.com.
-
-gutendex.com is an unofficial but stable, free JSON API for Gutenberg.
-No auth required.  Returns EPUB + PDF download links + cover art.
-~70 000 public-domain books available.
-"""
-
 import logging
 from typing import Optional
 
@@ -22,7 +14,6 @@ _COVER_MIMES = ("image/jpeg", "image/png")
 
 
 def _flip_author(name: str) -> str:
-    """'Carroll, Lewis' → 'Lewis Carroll'."""
     if ", " in name:
         last, first = name.split(", ", 1)
         return f"{first} {last}"
@@ -78,7 +69,6 @@ class GutenbergService:
         self._http = client
 
     async def search(self, q: str, limit: int = 20) -> list[EbookResult]:
-        """Search Gutenberg for ebooks matching q (EPUB-available only)."""
         try:
             r = await self._http.get(
                 f"{_BASE}/books",

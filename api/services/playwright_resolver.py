@@ -1,22 +1,3 @@
-"""
-PlaywrightResolverService — headless Chromium stream resolver.
-
-Pipeline (proven via probe_playwright.py v8):
-  1. GET vidsrcme.ru/embed/{type}/{id}/ via httpx
-     → extract data-hash → cloudnestra.com/rcp/{hash}
-  2. Load cloudnestra.com/rcp/{hash} DIRECTLY as main frame in headless Chromium
-     (loading as main frame avoids nested-iframe click issues)
-  3. Inject STEALTH_JS (plugins, chrome mock, sbx onerror fix, hasFocus, …)
-  4. Wait 4s for player to initialise (TMDB poster + play button appear)
-  5. Click the play button ([class*="play"] → fas fa-play icon)
-  6. Intercept first *.m3u8 network request → return MediaStream
-
-The m3u8 master playlist contains relative quality-variant paths resolved by
-the /stream/proxy endpoint.  Referrer must be https://cloudnestra.com/.
-
-Caches resolved streams per (tmdb_id, season, episode) for 1 hour.
-"""
-
 import asyncio
 import logging
 import re
@@ -107,7 +88,6 @@ _CLICK_PLAY_JS = """() => {
 }"""
 
 
-# ── Cache helpers ─────────────────────────────────────────────────────────────
 
 def _cache_key(tmdb_id: int, season: Optional[int], episode: Optional[int]) -> str:
     return f"{tmdb_id}:{season}:{episode}"
@@ -124,13 +104,8 @@ def _cache_set(key: str, streams: list[MediaStream]) -> None:
     _cache[key] = (streams, time.monotonic())
 
 
-# ── Core resolution logic ─────────────────────────────────────────────────────
 
 async def _get_rcp_url(embed_url: str) -> Optional[str]:
-    """
-    Fetch the vidsrcme.ru embed page and extract the cloudnestra.com/rcp/{hash}
-    URL from the first data-hash attribute in the page HTML.
-    """
     async with httpx.AsyncClient() as client:
         try:
             r = await client.get(
@@ -158,10 +133,6 @@ async def _get_rcp_url(embed_url: str) -> Optional[str]:
 
 
 async def _launch_and_capture(rcp_url: str) -> Optional[str]:
-    """
-    Open cloudnestra.com/rcp/{hash} in headless Chromium, click play,
-    and return the first intercepted m3u8 URL (or None on timeout).
-    """
     try:
         from playwright.async_api import async_playwright
     except ImportError:
@@ -229,10 +200,6 @@ async def _launch_and_capture(rcp_url: str) -> Optional[str]:
 
 
 async def _resolve_embed(embed_url: str) -> list[MediaStream]:
-    """
-    Full pipeline: vidsrc.to embed URL → vidsrcme.ru → cloudnestra.com/rcp
-    → Playwright → MediaStream.
-    """
     # Rewrite vidsrc.to → vidsrcme.ru (bypasses Cloudflare on vidsrc.to)
     embed_url = (
         embed_url
@@ -261,19 +228,9 @@ async def _resolve_embed(embed_url: str) -> list[MediaStream]:
     )]
 
 
-# ── Service class ─────────────────────────────────────────────────────────────
 
 class PlaywrightResolverService:
-    """FastAPI-injectable wrapper around _resolve_embed with TTL caching."""
-
     async def _resolve(self, key: str, embed_url: str) -> list[MediaStream]:
-        """
-        Resolve embed_url, with:
-          - TTL cache (1h): instant return for recently resolved content
-          - In-flight deduplication: if two requests race for the same key
-            (e.g. React StrictMode double-mount), the second waits for the
-            first instead of launching a second Playwright session.
-        """
         if cached := _cache_get(key):
             logger.debug("Cache hit — %s", key)
             return cached

@@ -1,28 +1,3 @@
-"""
-SportsService — live sports data via the streami.su public API.
-
-No authentication required.  Three endpoints, one async client.
-
-Flow:
-  1. get_sports()                        → sport categories (football, basketball, ...)
-  2. get_matches(sport_id)               → live/upcoming matches for that sport
-  3. get_stream(match_id, src)           → embed URL + viewer count (streami.su raw)
-  4. resolve_sport_stream(match_id, src) → scrape embed page for m3u8 URLs
-
-Resolution pipeline (browser-free, uses curl_cffi to bypass Cloudflare):
-  a. Try streami.su/api/stream/{match_id}/{source_id} → {"embedUrl": "..."}
-  b. Try streamed.su/api/stream/{match_id}/{source_id} as fallback
-  c. Fetch the embed page with curl_cffi (impersonates Chrome TLS)
-  d. Regex the response HTML/JS for .m3u8 URLs
-  e. Also try the streamed.su watch page directly
-  f. Return SportStreamResolved with de-duped URLs + correct Referer
-
-Note: this works when the embed player includes the m3u8 URL statically in its
-HTML/JS source.  If the player fetches the URL dynamically at runtime (pure JS
-XHR/fetch), no m3u8 will be found — a headless browser would be needed for those
-sources.  The proxy endpoint still allows playback once URLs are resolved.
-"""
-
 import json
 import logging
 import re
@@ -54,12 +29,6 @@ _NOISE_DOMAINS = ("google", "analytics", "tracking", "doubleclick", "facebook")
 
 
 def _referrer_for_urls(urls: list[str]) -> str:
-    """
-    Determine the correct Referer header for CDN segment requests.
-    Mirrors the logic in gonwatch helpers.go openMpv():
-      embedsports.top / poocloud.in / vdcast.live → https://embedsports.top/
-      strmd.top                                   → https://strmd.top/
-    """
     for url in urls:
         if any(d in url for d in ("embedsports.top", "poocloud.in", "vdcast.live")):
             return "https://embedsports.top/"
@@ -69,7 +38,6 @@ def _referrer_for_urls(urls: list[str]) -> str:
 
 
 def _extract_m3u8(text: str) -> list[str]:
-    """Find all .m3u8 URLs in an HTML/JS blob, filtering noise."""
     found = _M3U8_RE.findall(text)
     return [u for u in found if not any(n in u for n in _NOISE_DOMAINS)]
 
@@ -86,12 +54,6 @@ class SportsService:
         await self._client.aclose()
 
     async def get_sports(self) -> list[Sport]:
-        """
-        Return all available sport categories.
-
-        Response is a flat JSON array:
-          [{"id": "football", "name": "Football"}, ...]
-        """
         if (hit := cache.get("sports:categories")) is not None:
             return hit
         response = await self._client.get("/api/sports")
@@ -101,12 +63,6 @@ class SportsService:
         return result
 
     async def get_matches(self, sport_id: str) -> list[Match]:
-        """
-        Return live/upcoming matches for one sport category.
-
-        Response array shape:
-          [{"id": "...", "title": "...", "sources": [{"source": "...", "id": "..."}]}]
-        """
         key = f"sports:matches:{sport_id}"
         if (hit := cache.get(key)) is not None:
             return hit
@@ -123,12 +79,6 @@ class SportsService:
         return matches
 
     async def get_stream(self, match_id: str, source_id: str) -> SportStream:
-        """
-        Resolve the embed/stream URL for a specific match source.
-
-        Response is an array; we use the first element:
-          [{"embedUrl": "https://...", "viewers": 42}]
-        """
         response = await self._client.get(f"/api/stream/{match_id}/{source_id}")
         if response.status_code == 404:
             raise ValueError("Stream not available — match may not be live yet")
@@ -145,20 +95,8 @@ class SportsService:
     async def resolve_sport_stream(
         self, match_id: str, source_id: str
     ) -> SportStreamResolved:
-        """
-        Browser-free stream resolution using curl_cffi (Chrome TLS impersonation).
-
-        1. Try streami.su/api/stream for the embed URL.
-        2. Try streamed.su/api/stream as fallback.
-        3. Fetch the embed URL + the streamed.su watch page with curl_cffi.
-        4. Regex each response for .m3u8 URLs embedded in the page source.
-
-        Works when the embed player includes the stream URL statically in HTML/JS.
-        Returns an empty URL list if the player loads the URL dynamically (JS-only).
-        """
         embed_url: str | None = None
 
-        # ── Step 1: streami.su embed URL ──────────────────────────────────────
         try:
             r = await self._client.get(f"/api/stream/{match_id}/{source_id}")
             if r.status_code == 200:
@@ -170,7 +108,6 @@ class SportsService:
         except Exception as exc:
             logger.debug("Sports: streami.su stream API unavailable: %s", exc)
 
-        # ── Step 2: streamed.su API fallback ──────────────────────────────────
         if not embed_url:
             try:
                 async with AsyncSession(impersonate="chrome124") as sess:
@@ -188,7 +125,6 @@ class SportsService:
             except Exception as exc:
                 logger.debug("Sports: streamed.su API: %s", exc)
 
-        # ── Step 3: scrape for .m3u8 URLs ─────────────────────────────────────
         # Build list of pages to check — embed URL first (if available), then
         # the streamed.su watch page as a final fallback.
         pages: list[tuple[str, str]] = []

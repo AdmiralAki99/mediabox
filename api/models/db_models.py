@@ -9,8 +9,6 @@ class Base(DeclarativeBase):
 
 
 class HistoryItem(Base):
-    """One row = one piece of content the user has watched or is watching."""
-
     __tablename__ = "history"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -39,8 +37,6 @@ class HistoryItem(Base):
 
 
 class BookBookmark(Base):
-    """One row per bookmarked book — keyed by the ebook's unique ID string."""
-
     __tablename__ = "book_bookmarks"
 
     book_id:    Mapped[str]   = mapped_column(String, primary_key=True)
@@ -57,8 +53,6 @@ class BookBookmark(Base):
 
 
 class Download(Base):
-    """One row = one anime episode download (queued, in progress, or finished)."""
-
     __tablename__ = "downloads"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

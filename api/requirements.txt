@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+httpx
+pydantic-settings
+python-dotenv
+pydantic[email]
+sqlalchemy
+aiosqlite
+alembic
+anipy-api
+cryptography
+langdetect
+curl-cffi
+beautifulsoup4
+lxml
+zlibrary

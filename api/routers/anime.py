@@ -1,22 +1,3 @@
-"""
-Anime router.
-
-/anime/search              → AllAnimeService (streaming provider)
-/anime/tmdb/search         → TMDB (posters, descriptions, ratings)
-/anime/tmdb/trending       → TMDB
-/anime/tmdb/top-rated      → TMDB
-/anime/tmdb/airing-now     → TMDB
-/anime/tmdb/action         → TMDB
-
-/anime/{provider}/{id}/info
-/anime/{provider}/{id}/episodes
-/anime/{provider}/{id}/stream/{episode}
-
-ROUTE ORDER IS IMPORTANT: concrete paths (/search, /tmdb/*) must be
-registered before the parameterised paths (/{provider}/...) or FastAPI
-will greedily match "tmdb" as a provider name.
-"""
-
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 

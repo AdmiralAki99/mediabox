@@ -1,24 +1,3 @@
-"""
-FlixHQService — stream resolution for movies and TV shows.
-
-Pipeline (derived from lobster.sh by bin-thenewbo, MIT License):
-
-  Search: GET https://flixhq.to/search/{query}
-
-  Movie:  GET /ajax/movie/episodes/{media_id}    → server list (all episode_ids)
-          GET /ajax/episode/sources/{episode_id}  → embed_link
-  (tries every server until dec.eatmynerds.live succeeds)
-
-  TV:     GET /ajax/v2/tv/seasons/{media_id}          → season_id
-          GET /ajax/v2/season/episodes/{season_id}    → data_id
-          GET /ajax/v2/episode/servers/{data_id}       → server list (all episode_ids)
-          GET /ajax/episode/sources/{episode_id}       → embed_link
-  (tries every server until dec.eatmynerds.live succeeds)
-
-  Decrypt: GET https://dec.eatmynerds.live/?url={embed_link}
-           → { file: "...playlist.m3u8", tracks: [{file, label, kind}] }
-"""
-
 import logging
 import re
 
@@ -46,10 +25,8 @@ class FlixHQService:
     def __init__(self, http: httpx.AsyncClient) -> None:
         self._http = http
 
-    # ── Public ────────────────────────────────────────────────────────────────
 
     async def search(self, query: str) -> list[dict]:
-        """Search flixhq.to; returns [{id, title, type, image, year}]."""
         q = query.replace(" ", "-")
         resp = await self._http.get(
             f"{_BASE}/search/{q}",
@@ -65,7 +42,6 @@ class FlixHQService:
     async def get_movie_streams(
         self, media_id: str, provider: str = "Vidcloud"
     ) -> list[MediaStream]:
-        """Try every available server for this movie; return streams from the first that works."""
         server_ids = await self._get_all_movie_server_ids(media_id, provider)
         for episode_id in server_ids:
             try:
@@ -84,7 +60,6 @@ class FlixHQService:
         episode: int,
         provider: str = "Vidcloud",
     ) -> list[MediaStream]:
-        """Try every available server for this episode; return streams from the first that works."""
         season_id  = await self._get_season_id(media_id, season)
         data_id    = await self._get_episode_data_id(season_id, episode)
         server_ids = await self._get_all_tv_server_ids(data_id, provider)
@@ -98,7 +73,6 @@ class FlixHQService:
                 logger.warning("TV server episode_id=%s failed: %s", episode_id, exc)
         return []
 
-    # ── Search parsing ────────────────────────────────────────────────────────
 
     def _parse_search(self, html: str) -> list[dict]:
         results: list[dict] = []
@@ -119,12 +93,10 @@ class FlixHQService:
                 })
         return results
 
-    # ── Movie helpers ─────────────────────────────────────────────────────────
 
     async def _get_all_movie_server_ids(
         self, media_id: str, provider: str
     ) -> list[str]:
-        """Return all episode_ids from the movie server list, preferred provider first."""
         resp = await self._http.get(
             f"{_BASE}/ajax/movie/episodes/{media_id}",
             headers=_HEADERS,
@@ -150,7 +122,6 @@ class FlixHQService:
         logger.debug("Movie servers: %s", [(n, eid) for eid, n in ordered])
         return [eid for eid, _ in ordered]
 
-    # ── TV helpers ────────────────────────────────────────────────────────────
 
     async def _get_season_id(self, media_id: str, season_number: int) -> str:
         resp = await self._http.get(
@@ -197,7 +168,6 @@ class FlixHQService:
     async def _get_all_tv_server_ids(
         self, data_id: str, provider: str
     ) -> list[str]:
-        """Return all episode_ids from the server list for this data_id, preferred provider first."""
         resp = await self._http.get(
             f"{_BASE}/ajax/v2/episode/servers/{data_id}",
             headers=_HEADERS,
@@ -218,7 +188,6 @@ class FlixHQService:
         logger.debug("TV servers: %s", [(n, eid) for eid, n in ordered])
         return [eid for eid, _ in ordered]
 
-    # ── Common ────────────────────────────────────────────────────────────────
 
     async def _get_embed_link(self, episode_id: str) -> str:
         resp = await self._http.get(
@@ -235,15 +204,6 @@ class FlixHQService:
         return link
 
     async def _decrypt(self, embed_link: str) -> list[MediaStream]:
-        """
-        Resolve embed_link to playable streams.
-
-        Strategy:
-          1. Try dec.eatmynerds.live (handles Vidcloud/UpCloud classically)
-          2. If that returns 4xx/5xx, try the Megacloud direct sources API
-             (handles streameeeeee.site and similar Megacloud variants)
-        """
-        # ── 1. dec.eatmynerds.live ────────────────────────────────────────────
         try:
             resp = await self._http.get(
                 _DEC,
@@ -266,21 +226,9 @@ class FlixHQService:
         except Exception as exc:
             logger.debug("dec.eatmynerds.live failed (%s), trying Megacloud direct API", exc)
 
-        # ── 2. Megacloud direct sources API ───────────────────────────────────
         return await self._megacloud_sources(embed_link)
 
     async def _megacloud_sources(self, embed_url: str) -> list[MediaStream]:
-        """
-        Direct Megacloud/Vidcloud sources API.
-
-        Embed URL pattern: https://{domain}/{embed_type}/v{n}/e-{n}/{id}?z=
-        Sources API:       GET https://{domain}/{embed_type}/ajax/getSources?id={id}
-
-        NOTE: the AJAX path is /{embed_type}/ajax/getSources, NOT /ajax/{embed_type}/getSources.
-
-        Response when NOT encrypted: { sources: [{file, type}], tracks: [...] }
-        Response when encrypted:     { sources: "base64_aes_string", encrypted: true }
-        """
         m = re.search(r'https?://([^/?#]+)/(embed-\d+)/v\d+/e-\d+/([A-Za-z0-9_-]+)', embed_url)
         if not m:
             raise ValueError(f"Embed URL does not match Megacloud pattern: {embed_url[:80]}")
@@ -331,7 +279,6 @@ class FlixHQService:
     def _build_streams(
         self, base_url: str, subtitles: list[str], referrer: str
     ) -> list[MediaStream]:
-        """Turn a base m3u8 URL into quality-variant MediaStream objects."""
         if "playlist.m3u8" in base_url:
             prefix = base_url.replace("/playlist.m3u8", "")
             return [

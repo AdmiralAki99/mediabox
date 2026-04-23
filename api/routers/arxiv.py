@@ -1,14 +1,3 @@
-"""
-arXiv router.
-
-GET /arxiv/categories                         — curated category list
-GET /arxiv/search?q=&limit=&offset=           — free-text search
-GET /arxiv/latest?category=&limit=&offset=&sort= — browse by category
-GET /arxiv/paper/{arxiv_id}                   — single paper detail
-GET /arxiv/pdf/{arxiv_id}                     — stream PDF through backend proxy
-GET /arxiv/html/{arxiv_id}                    — proxy HTML version (assets rewritten)
-"""
-
 import re
 
 import httpx
@@ -34,14 +23,13 @@ def get_arxiv_http() -> httpx.AsyncClient:
 
 
 def _rewrite_html(html: str, arxiv_id: str) -> str:
-    # fix up the arxiv HTML so it loads correctly when embedded in our viewer
+    # fix up the arxiv HTML so it loads correctly when embedded in the app
     base = f"https://arxiv.org/html/{arxiv_id}/"
 
-    # Rewrite root-relative paths → full arxiv.org URLs (double- and single-quoted)
+    # Root-relative paths for Arxiv
     html = re.sub(r'(href|src|action)="(/[^"]*)"', r'\1="https://arxiv.org\2"', html)
     html = re.sub(r"(href|src|action)='(/[^']*)'",  r"\1='https://arxiv.org\2'", html)
-
-    # Inject <base href> so remaining relative paths resolve to arxiv.org/html/{id}/
+    
     html = html.replace("<head>", f'<head><base href="{base}">', 1)
     html = html.replace("<HEAD>", f'<HEAD><base href="{base}">', 1)
 
@@ -60,7 +48,6 @@ async def search_papers(
     offset: int = Query(0,  ge=0),
     service: ArxivService = Depends(get_arxiv_service),
 ) -> ArxivSearchResult:
-    """Search arXiv across all fields.  Results sorted by relevance."""
     try:
         return await service.search(q, limit=limit, offset=offset)
     except Exception as exc:
@@ -75,11 +62,6 @@ async def latest_papers(
     sort:     str = Query("latest", pattern="^(latest|updated)$"),
     service: ArxivService = Depends(get_arxiv_service),
 ) -> ArxivSearchResult:
-    """
-    Browse papers in a category.
-    sort=latest  → newest submissions first
-    sort=updated → most recently revised first
-    """
     try:
         return await service.by_category(
             category, limit=limit, offset=offset, sort=sort
@@ -93,10 +75,6 @@ async def proxy_pdf(
     arxiv_id: str,
     client: httpx.AsyncClient = Depends(get_arxiv_http),
 ) -> StreamingResponse:
-    """
-    Stream the PDF from arxiv.org through the backend so it renders
-    inside the app's iframe without leaving the SPA.
-    """
     clean = _clean_id(arxiv_id)
     url   = f"https://arxiv.org/pdf/{clean}"
     try:
@@ -128,11 +106,6 @@ async def proxy_html(
     arxiv_id: str,
     client: httpx.AsyncClient = Depends(get_arxiv_http),
 ) -> HTMLResponse:
-    """
-    Proxy the arXiv HTML paper version, rewriting asset URLs so they
-    load from arxiv.org rather than our backend.  Returns 404 if the
-    paper has no HTML version (not all papers do).
-    """
     clean = _clean_id(arxiv_id)
     url   = f"https://arxiv.org/html/{clean}"
     try:
@@ -158,7 +131,6 @@ async def get_paper(
     arxiv_id: str,
     service: ArxivService = Depends(get_arxiv_service),
 ) -> ArxivPaper:
-    """Fetch a single paper by its arXiv ID, e.g. 2401.12345."""
     try:
         return await service.paper(arxiv_id)
     except ValueError as exc:

@@ -1,20 +1,3 @@
-"""
-MoviesAPIService — pure-Python stream resolver via ww2.moviesapi.to + flixcdn.cyou.
-
-Pipeline (no browser required):
-  1. GET ww2.moviesapi.to/api/movie/{tmdb_id}       → embed_id  +  subtitle VTT URLs
-     GET ww2.moviesapi.to/api/tv/{tmdb_id}/{s}/{ep} → embed_id  +  subtitle VTT URLs
-  2. GET flixcdn.cyou/api/v1/video?id={embed_id}    → AES-CBC hex-encoded blob
-     → decrypt → {"source": "<time-signed m3u8 URL>", ...}
-  3. Return [MediaStream(url=source, subtitles=[english VTT URLs], referrer=...)]
-
-Encryption details (fixed key/IV across all content):
-  Algorithm: AES-128-CBC
-  Key: kiemtienmua911ca  (hex: 6b69656d7469656e6d75613931316361)
-  IV:  1234567890oiuytr  (hex: 313233343536373839306f6975797472)
-  Encoding: response body is ASCII hex text → bytes.fromhex → AES decrypt → PKCS7 strip
-"""
-
 import json
 import logging
 import urllib.parse
@@ -42,7 +25,6 @@ _AES_IV  = bytes.fromhex("313233343536373839306f6975797472")  # 1234567890oiuytr
 
 
 def _decrypt(raw: bytes) -> dict:
-    """Hex-decode then AES-CBC-decrypt the flixcdn.cyou API response."""
     hex_str = raw.decode("ascii").strip()
     binary  = bytes.fromhex(hex_str)
     cipher  = Cipher(algorithms.AES(_AES_KEY), modes.CBC(_AES_IV), backend=default_backend())
@@ -54,16 +36,6 @@ def _decrypt(raw: bytes) -> dict:
 
 
 def _parse_fragment(video_url: str) -> tuple[str, list[str]]:
-    """
-    Extract embed_id and English subtitle URLs from a flixcdn.cyou fragment URL.
-
-    video_url format:
-        https://flixcdn.cyou/#<embed_id>&poster=...&subs=[{...},{...}]
-    Returns:
-        (embed_id, [subtitle_vtt_url, ...])  — only English / default subs included
-    Raises:
-        ValueError if video_url has no '#' fragment (content unavailable on this source).
-    """
     if "#" not in video_url:
         raise ValueError(f"moviesapi returned no embed fragment — content likely unavailable: {video_url!r}")
     fragment = video_url.split("#", 1)[1]
@@ -91,11 +63,6 @@ def _parse_fragment(video_url: str) -> tuple[str, list[str]]:
 
 
 class MoviesAPIService:
-    """
-    Resolves movie and TV episode streams using the ww2.moviesapi.to → flixcdn.cyou
-    pipeline.  Accepts a shared AsyncClient so connections are reused across requests.
-    """
-
     def __init__(self, client: httpx.AsyncClient) -> None:
         self._http = client
 
@@ -107,22 +74,12 @@ class MoviesAPIService:
         }
 
     async def _fetch_video_data(self, embed_id: str) -> dict:
-        """Call /api/v1/video and decrypt the response."""
         url = f"{_BASE_FX}/api/v1/video?id={embed_id}"
         r = await self._http.get(url, headers=self._headers_for(_BASE_FX), timeout=15)
         r.raise_for_status()
         return _decrypt(r.content)
 
     async def _resolve_mov2day(self, video_url: str) -> list[MediaStream]:
-        """
-        Resolve streams for content routed through player.mov2day.xyz.
-
-        Pipeline (all discovered by debug probing):
-          player.mov2day.xyz/tv/{id}/{s}/{ep}
-            → cdn.mov2day.xyz/embed/tv/{id}/{s}/{ep}   (HTML with iframe)
-            → brightpathsignals.com/embed/tv/{id}/{s}/{ep}  (HTML with CONFIG JSON)
-            → CONFIG.sourceApiUrl (/embed/source-api.php)   (returns stream sources)
-        """
         import re
 
         # Step 1: cdn embed URL (skip the player.mov2day.xyz shell page)
@@ -218,7 +175,6 @@ class MoviesAPIService:
         return [MediaStream(url=stream_url, subtitles=[], referrer=bps_origin + "/")]
 
     async def resolve_movie(self, tmdb_id: int) -> list[MediaStream]:
-        """Return stream list for a movie.  Raises httpx.HTTPStatusError on failure."""
         url = f"{_BASE_MA}/api/movie/{tmdb_id}"
         r = await self._http.get(url, headers=self._headers_for(_BASE_MA), timeout=15)
         r.raise_for_status()
@@ -247,7 +203,6 @@ class MoviesAPIService:
         )]
 
     async def resolve_tv(self, tmdb_id: int, season: int, episode: int) -> list[MediaStream]:
-        """Return stream list for a TV episode.  Raises httpx.HTTPStatusError on failure."""
         url = f"{_BASE_MA}/api/tv/{tmdb_id}/{season}/{episode}"
         r = await self._http.get(url, headers=self._headers_for(_BASE_MA), timeout=15)
         r.raise_for_status()

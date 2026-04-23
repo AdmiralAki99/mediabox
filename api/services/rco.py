@@ -1,36 +1,3 @@
-"""
-ReadComicService — scrapes readcomiconline.li for Western comics.
-
-Uses curl-cffi (Chrome TLS impersonation) to bypass Cloudflare,
-then parses HTML with BeautifulSoup.
-
-Site conventions:
-  Search:  GET /Search/Manga?keyword={q}
-           → div.list-comic > div.item rows (title, cover img, slug href)
-           → item div may have a title= attribute with Status / Summary metadata
-
-  Series:  GET /Comic/{slug}
-           → table.listing rows; each row td[0] has
-             <a href="/Comic/{slug}/{issue}?id={n}">Issue Title</a>
-             td[1] = publish date
-
-  Pages:   GET /Comic/{slug}/{issue}?id={n}&readType=0&quality=hq
-           → JS embeds per-page encoded image URLs. The page JS defines a
-             substitution token (e.g. q1__2ucUs3_) that replaces 'e' chars in
-             base64-encoded image paths. We:
-             1) Extract the token from the inline helper function's replace call.
-             2) Extract encoded URL blobs from *xnz variable assignments.
-             3) Decode each blob: restore 'e', strip a fixed prefix/suffix via
-                step1/step2, base64-decode, drop 4 chars at offset 13, append
-                '=s1600' + auth query string, prepend blogspot CDN host.
-
-Chapter ID format:
-  The full href from the listing table including the ?id= query param,
-  e.g. "/Comic/Batman-2016/Issue-1?id=12345".  Because this contains
-  slashes it cannot be used as a URL path parameter — the pages router
-  receives it as a query-string argument instead.
-"""
-
 import base64
 import re
 
@@ -62,7 +29,6 @@ class ReadComicService:
         self._warmed_up = False
 
     async def _warm_up(self) -> None:
-        """Visit homepage once to collect Cloudflare cookies before searching."""
         if self._warmed_up:
             return
         try:
@@ -74,21 +40,13 @@ class ReadComicService:
     async def close(self) -> None:
         await self._session.close()
 
-    # ── Helpers ───────────────────────────────────────────────────────────────
 
     @staticmethod
     def _strip_tags(text: str) -> str:
-        """Remove any residual HTML tags from a plain-text field."""
         return re.sub(r"<[^>]+>", "", text).strip()
 
     @staticmethod
     def _to_rich_html(element: Tag) -> str:
-        """
-        Extract inner HTML from a BeautifulSoup element, keeping only the tags
-        that QML's Text.RichText supports: b/strong, i/em, u, br, p, ul, ol, li.
-        Everything else is unwrapped (content kept, tag stripped).
-        Style/class/id attributes are also removed.
-        """
         _KEEP = {"b", "strong", "i", "em", "u", "br", "p", "ul", "ol", "li", "span"}
         html = element.decode_contents()
         # Normalise <br> variants
@@ -118,13 +76,6 @@ class ReadComicService:
 
     @staticmethod
     def _parse_item_meta(item_div) -> dict:
-        """
-        Extract status, genres, and description from a search result item.
-
-        rco encodes per-comic metadata in the outer div's title= attribute:
-          "Status: Ongoing; Genres: Action, Crime; Summary: Batman is..."
-        Genres may also appear as <a class="dotUnder"> inside <p> tags.
-        """
         meta: dict = {"status": "ongoing", "genres": [], "description": ""}
 
         title_attr = item_div.get("title", "")
@@ -144,10 +95,8 @@ class ReadComicService:
 
         return meta
 
-    # ── Public API ────────────────────────────────────────────────────────────
 
     def _parse_list_items(self, soup, limit: int = 20) -> list[ComicResult]:
-        """Parse the standard div.list-comic > div.item grid used on search, genre, and list pages."""
         results: list[ComicResult] = []
         for item in soup.select("div.list-comic > div.item")[:limit]:
             a_title = item.find("a", class_="title") or item.find("a")
@@ -181,7 +130,6 @@ class ReadComicService:
         return results
 
     async def get_comic_meta(self, slug: str) -> dict:
-        """Scrape the comic detail page for richer metadata: description, genres, status, views."""
         key = f"rco:meta:{slug}"
         if (hit := cache.get(key)) is not None:
             return hit
@@ -247,7 +195,6 @@ class ReadComicService:
         return meta
 
     async def get_comics_by_genre(self, genre: str, limit: int = 20) -> list[ComicResult]:
-        """Scrape /Genre/{genre} — same item grid as search results."""
         key = f"rco:genre:{genre.lower()}:{limit}"
         if (hit := cache.get(key)) is not None:
             return hit
@@ -311,7 +258,6 @@ class ReadComicService:
 
     @staticmethod
     def _baeu(s: str) -> str:
-        """Decode one encoded image blob into a full https URL."""
         # Reverse b/h obfuscation (net-zero when called after token→e substitution,
         # but kept for correctness in case the page encodes them separately).
         s = s.replace("pw_.g28x", "b").replace("d2pr.x_27", "h")
@@ -342,15 +288,6 @@ class ReadComicService:
 
     @staticmethod
     def _decode_pages(html: str) -> list[str]:
-        """
-        Extract and decode all page image URLs from an rco chapter page.
-
-        The site's JS obfuscates image blobs in *xnz variable assignments,
-        one blob per page, ending with ==s1600?rhlupa=… or ==s0?rhlupa=….
-        The substitution token is declared as: l.replace(/TOKEN/g, 'e').
-
-        Falls back to the legacy lstImages.push("url") pattern.
-        """
         # 1. Find per-request substitution token
         token_m = re.search(r"l\.replace\(/([^/]+)/g,\s*'e'\)", html)
         if token_m:
@@ -379,13 +316,6 @@ class ReadComicService:
         return urls
 
     async def get_chapter_pages(self, issue_href: str) -> list[ChapterPage]:
-        """
-        issue_href is the full relative URL stored as the chapter ID,
-        e.g. "/Comic/Batman-2016/Issue-1?id=12345".
-
-        readType=0 embeds all page URLs in the JS at once.
-        quality=hq requests high-resolution scans.
-        """
         sep = "&" if "?" in issue_href else "?"
         url = f"{_BASE}{issue_href}{sep}readType=0&quality=hq"
         r = await self._session.get(url)

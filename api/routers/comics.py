@@ -35,7 +35,6 @@ async def proxy_image(
     url: str = Query(...),
     svc: ReadComicService = Depends(_get_rco),
 ):
-    """Proxy page images from readcomiconline.li with the correct Referer header."""
     _allowed = (RCO_BASE, "https://2.bp.blogspot.com/", "https://blogger.googleusercontent.com/")
     if not any(url.startswith(p) for p in _allowed):
         raise HTTPException(status_code=400, detail="Image host not allowed")
@@ -46,7 +45,6 @@ async def proxy_image(
     return StreamingResponse(iter([resp.content]), media_type=content_type)
 
 
-# uses query param because chapter IDs contain slashes, can't be path segments
 @router.get("/chapter/pages", response_model=list[ChapterPage])
 async def get_chapter_pages(
     id: str = Query(..., description="Full issue href from chapter listing"),

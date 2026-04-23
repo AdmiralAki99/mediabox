@@ -53,7 +53,6 @@ class ComickService:
 
     @staticmethod
     def _parse_genres(item: dict) -> list[str]:
-        """Genres arrive either as strings or as {id, name, slug} dicts."""
         raw = item.get("genres") or []
         result = []
         for g in raw:
@@ -102,12 +101,6 @@ class ComickService:
 
 
     async def search_comics(self, query: str, limit: int = 20) -> list[ComicResult]:
-        """
-        Search comick.dev by title.
-
-        The trailing slash on /v1.0/search/ is required by the server.
-        t=false disables the tachiyomi-specific response format.
-        """
         key = f"comic:search:{query.lower()}:{limit}"
         if (hit := cache.get(key)) is not None:
             return hit
@@ -130,11 +123,6 @@ class ComickService:
         language: str = "en",
         page_size: int = 300,
     ) -> list[ComicChapter]:
-        """
-        Fetch all chapters for a comic by its hid, using parallel page requests.
-
-        Page 1 exposes `total`; remaining pages are fetched concurrently.
-        """
         def _params(page: int) -> dict:
             return {"lang": language, "page": page, "limit": page_size, "chap-order": 0}
 
@@ -165,12 +153,6 @@ class ComickService:
         return all_chapters
 
     async def get_chapter_pages(self, hid: str) -> list[ChapterPage]:
-        """
-        Fetch page image URLs for a chapter.
-
-        ?tachiyomi=true causes the API to return full absolute image URLs.
-        Response: {"chapter": {"images": [{"url": "https://..."}, ...]}}
-        """
         response = await self._session.get(
             f"{_BASE}/chapter/{hid}", params={"tachiyomi": "true"}
         )

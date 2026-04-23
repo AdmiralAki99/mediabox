@@ -1,19 +1,3 @@
-"""
-LibGenService — search Library Genesis via the two-step pipeline used by
-libgen-cli (refs/libgen-cli-master):
-
-  Step 1 — HTML search page → extract MD5 hashes via regex
-            (same SearchHref / SearchMD5 patterns as the Go CLI)
-
-  Step 2 — JSON API: json.php?ids={md5,...}&fields=...
-            Returns structured metadata including coverurl, pages, language, etc.
-            More reliable than HTML table scraping — independent of page layout.
-
-Cover URL:  https://libgen.is/covers/{coverurl}
-Download:   library.lol/main/{md5} resolved at read-time, or get.php fallback
-Mirrors:    exact set from libgen-cli mirrors.go — libgen.is → libgen.rs → libgen.st → libgen.gs
-"""
-
 import logging
 import re
 from typing import Optional
@@ -78,11 +62,6 @@ class LibGenService:
         self._http = client
 
     async def search(self, q: str, limit: int = 20) -> list[EbookResult]:
-        """
-        Search LibGen. Tries libgen.li first (single-pass HTML parse — json.php
-        is broken there). Falls back to the classic two-step MD5 → json.php
-        pipeline for the other mirrors.
-        """
         # Fast path: libgen.li parses everything from HTML in one request
         results = await self._fetch_from_libgen_li(q, limit)
         if results:
@@ -94,7 +73,6 @@ class LibGenService:
             return []
         return await self._fetch_details(hashes)
 
-    # ── libgen.li: single-pass HTML parser ───────────────────────────────────
 
     _TAG_RE   = re.compile(r"<[^>]+>")
     _ROW_RE   = re.compile(r"<tr[^>]*>(.*?)</tr>", re.DOTALL)
@@ -104,7 +82,6 @@ class LibGenService:
     _MD5_RE   = re.compile(r"/ads\.php\?md5=([A-Za-z0-9]{32})")
 
     async def _fetch_from_libgen_li(self, q: str, limit: int) -> list[EbookResult]:
-        """Parse all metadata from libgen.li HTML in a single request."""
         res = 25 if limit <= 25 else (50 if limit <= 50 else 100)
         try:
             r = await self._http.get(
@@ -184,7 +161,6 @@ class LibGenService:
             logger.info("LibGen: parsed %d results from libgen.li HTML", len(results))
         return results
 
-    # ── Step 1: search page → MD5 hashes (legacy mirrors) ────────────────────
 
     async def _fetch_hashes(self, q: str, limit: int) -> list[str]:
         res = 25 if limit <= 25 else (50 if limit <= 50 else 100)
@@ -217,7 +193,6 @@ class LibGenService:
         logger.warning("LibGen: all search mirrors failed for q=%r", q)
         return []
 
-    # ── Step 2: json.php batch → metadata + cover ─────────────────────────────
 
     async def _fetch_details(self, hashes: list[str]) -> list[EbookResult]:
         ids = ",".join(hashes)
@@ -278,15 +253,8 @@ class LibGenService:
 
         return results
 
-    # ── Download URL resolution (library.lol → actual CDN link) ──────────────
 
     async def resolve_download_url(self, md5: str) -> str:
-        """
-        Resolve a LibGen MD5 to a direct CDN URL via library.lol.
-        Tries main → fiction → scimag collections in order.
-        Falls back to libgen.is/get.php?md5={md5} if all library.lol paths fail.
-        Mirrors libraryLolReg logic from libgen-cli/libgen/download.go.
-        """
         for collection in ("main", "fiction", "scimag"):
             lol_page = f"https://library.lol/{collection}/{md5}"
             try:

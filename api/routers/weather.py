@@ -30,7 +30,6 @@ def _wmo_condition(code: int) -> str:
 
 
 def _fmt_time(iso: str) -> str:
-    """'2024-04-11T06:34' → '6:34A'"""
     try:
         t   = iso[11:16]          # "06:34"
         h, m = int(t[:2]), t[3:]

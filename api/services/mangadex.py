@@ -1,22 +1,3 @@
-"""
-MangaDexService — all manga data via the MangaDex public REST API.
-
-No authentication required.  Base: https://api.mangadex.org
-
-Endpoints used:
-  GET /manga                      — search
-  GET /manga/{id}/feed            — chapter list
-  GET /at-home/server/{chapter_id} — per-chapter page URLs
-
-MangaDex response conventions:
-  - Top-level wrapper: {"result": "ok", "data": [...], "total": N}
-  - Localized strings: {"en": "Title", "ja": "タイトル"} — always prefer "en"
-  - Relationships: [{type, id, attributes}] — cover_art included when
-    includes[]=cover_art is sent with the search request
-  - Cover URL: https://uploads.mangadex.org/covers/{manga_id}/{filename}
-  - Chapter page URL: {baseUrl}/data/{hash}/{filename}
-"""
-
 import asyncio
 
 import httpx
@@ -176,15 +157,6 @@ class MangaDexService:
         return result
 
     async def search_manga(self, query: str, limit: int = 20) -> list[MangaResult]:
-        """
-        Search MangaDex for manga by title.
-
-        Uses includes[]=cover_art so the cover image filename is embedded in the
-        search response — no extra requests needed per result.
-
-        Query params are built as a list of tuples so httpx correctly renders
-        multi-value params like contentRating[]=safe&contentRating[]=suggestive.
-        """
         key = f"manga:search:{query.lower()}:{limit}"
         if (hit := cache.get(key)) is not None:
             return hit
@@ -207,13 +179,6 @@ class MangaDexService:
         manga_id: str,
         language: str = "en",
     ) -> list[Chapter]:
-        """
-        Fetch ALL chapters for a manga, using parallel page requests.
-
-        Page 1 is fetched first to discover the total count; all remaining
-        pages are then fired concurrently so large chapter lists (500+ entries
-        spanning multiple pages) download in parallel instead of sequentially.
-        """
         _page_size = 500  # MangaDex hard maximum
 
         def _params(offset: int) -> list:
@@ -252,13 +217,6 @@ class MangaDexService:
         return all_chapters
 
     async def get_recent_chapter_updates(self, limit: int = 30) -> list[MangaUpdateEntry]:
-        """
-        Return recently published English chapters with their manga covers.
-
-        Two requests:
-          1. GET /chapter — latest EN chapters, includes manga attributes via relationship
-          2. GET /manga?ids[]=... — batch cover art for all unique manga in the list
-        """
         params = [
             ("limit", min(limit, 50)),
             ("translatedLanguage[]", "en"),
@@ -324,16 +282,6 @@ class MangaDexService:
         return [MangaUpdateEntry(**e) for e in entries]
 
     async def get_chapter_pages(self, chapter_id: str) -> list[ChapterPage]:
-        """
-        Fetch page image URLs for a chapter from MangaDex's at-home CDN.
-
-        The at-home server response gives us:
-          - baseUrl  — CDN host chosen based on your location
-          - chapter.hash  — chapter-specific hash
-          - chapter.data  — list of filenames (high quality)
-
-        Page URL = {baseUrl}/data/{hash}/{filename}
-        """
         response = await self._client.get(f"/at-home/server/{chapter_id}")
         response.raise_for_status()
         body = response.json()

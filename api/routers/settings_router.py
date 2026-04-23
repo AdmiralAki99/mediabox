@@ -11,10 +11,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
-# .env sits one level up from this file (in api/)
+# .env sits one level up from this file
 _ENV_FILE = Path(__file__).parent.parent / ".env"
 
-# which keys the frontend is allowed to read/write
+# which keys the frontend is allowed to R/W
 _ALLOWED = {"TMDB_BEARER_TOKEN", "ZLIB_EMAIL", "ZLIB_PASSWORD", "ZLIB_DOMAIN", "NYT_BOOKS_API_KEY"}
 
 

@@ -364,7 +364,6 @@ class TMDBService:
         return result
 
     async def get_trailer_key(self, tmdb_id: int, media_type: str) -> str | None:
-        """Return the YouTube key for the first official Trailer, or None."""
         endpoint = f"/{media_type}/{tmdb_id}/videos"
         response = await self._client.get(endpoint, params={"language": "en-US"})
         response.raise_for_status()
