@@ -134,11 +134,10 @@ async def action_anime_tmdb(
     return SearchResponse(results=results, total=len(results))
 
 
-# {provider} in the URL is kept for compatibility but only "allanime" is wired up
-
+# {provider} in the URL is kept for compatibility but only "allanime" is wired up for now, for future proofing in case.
 @router.get("/{provider}/{identifier}/info", response_model=AnimeInfo)
 async def get_anime_info(
-    provider: str,  # noqa: ARG001 — kept for URL compatibility, only "allanime" supported
+    provider: str,  # ARG001
     identifier: str,
     service: AllAnimeService = Depends(get_allanime_service),
 ) -> AnimeInfo:
@@ -147,7 +146,7 @@ async def get_anime_info(
 
 @router.get("/{provider}/{identifier}/episodes", response_model=list[AnimeEpisode])
 async def get_anime_episodes(
-    provider: str,  # noqa: ARG001
+    provider: str,  #ARG001
     identifier: str,
     language: str = Query("sub", pattern="^(sub|dub)$"),
     service: AllAnimeService = Depends(get_allanime_service),

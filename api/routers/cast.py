@@ -1,9 +1,3 @@
-"""
-Cast to TV router — discover Chromecast and DLNA devices, send media to them.
-
-Requires: pip install pychromecast
-For DLNA: pip install upnpclient (optional, fall back gracefully if not installed)
-"""
 import asyncio
 import logging
 from typing import Optional
@@ -93,7 +87,6 @@ def _cast_dlna(host: str, url: str, title: str) -> None:
 
 @router.get("/devices", response_model=list[CastDevice])
 async def discover_devices() -> list[CastDevice]:
-    """Discover Chromecast and DLNA devices on the local network (takes 3-5 s)."""
     loop = asyncio.get_event_loop()
     cc_task = loop.run_in_executor(None, _discover_chromecasts)
     dlna_task = loop.run_in_executor(None, _discover_dlna)
@@ -104,7 +97,6 @@ async def discover_devices() -> list[CastDevice]:
 
 @router.post("/play", status_code=204)
 async def cast_play(req: CastRequest) -> None:
-    """Send a stream URL to a cast device."""
     loop = asyncio.get_event_loop()
     try:
         if req.device_type == "chromecast":

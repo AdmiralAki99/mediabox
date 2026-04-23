@@ -1,0 +1,147 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+
+      - name: Write .env from secrets
+        shell: pwsh
+        run: |
+          @"
+          TMDB_BEARER_TOKEN=${{ secrets.TMDB_BEARER_TOKEN }}
+          NYT_BOOKS_API_KEY=${{ secrets.NYT_BOOKS_API_KEY }}
+          ZLIB_EMAIL=${{ secrets.ZLIB_EMAIL }}
+          ZLIB_PASSWORD=${{ secrets.ZLIB_PASSWORD }}
+          "@ | Set-Content api\.env
+
+      - name: Set up API venv
+        run: |
+          cd api
+          python -m venv venv_build
+          .\venv_build\Scripts\pip install --upgrade pip --quiet
+          .\venv_build\Scripts\pip install -r requirements.txt pyinstaller pyinstaller-hooks-contrib --quiet
+
+      - name: Set up Qt venv
+        run: |
+          cd app-qt
+          python -m venv venv
+          .\venv\Scripts\pip install --upgrade pip --quiet
+          .\venv\Scripts\pip install PySide6 httpx pyinstaller pyinstaller-hooks-contrib --quiet
+
+      - name: Stamp version
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}".TrimStart("v")
+          (Get-Content installer\setup.iss) `
+            -replace '#define AppVersion\s+"[^"]+"', "#define AppVersion `"$ver`"" |
+            Set-Content installer\setup.iss
+
+      - name: Build
+        run: .\build-win.ps1 -MakeInstaller
+
+      - name: Zip portable bundle
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}".TrimStart("v")
+          Compress-Archive -Path dist\Mediabox -DestinationPath "Mediabox-$ver-windows-x64.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            installer\Output\Mediabox-Setup-*.exe
+            Mediabox-*-windows-x64.zip
+
+  build-linux-arm64:
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            libgl1 libegl1 libglib2.0-0 libdbus-1-3 \
+            libxkbcommon0 libfontconfig1 libxcb1 \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 \
+            libxkbcommon-x11-0
+
+      - name: Write .env from secrets
+        run: |
+          cat > api/.env <<'EOF'
+          TMDB_BEARER_TOKEN=${{ secrets.TMDB_BEARER_TOKEN }}
+          NYT_BOOKS_API_KEY=${{ secrets.NYT_BOOKS_API_KEY }}
+          ZLIB_EMAIL=${{ secrets.ZLIB_EMAIL }}
+          ZLIB_PASSWORD=${{ secrets.ZLIB_PASSWORD }}
+          EOF
+
+      - name: Set up API venv
+        run: |
+          cd api
+          python3 -m venv venv_build
+          venv_build/bin/pip install --upgrade pip --quiet
+          venv_build/bin/pip install -r requirements.txt pyinstaller pyinstaller-hooks-contrib --quiet
+
+      - name: Set up Qt venv
+        run: |
+          cd app-qt
+          python3 -m venv venv
+          venv/bin/pip install --upgrade pip --quiet
+          venv/bin/pip install PySide6 httpx pyinstaller pyinstaller-hooks-contrib --quiet
+
+      - name: Build
+        run: bash build.sh
+
+      - name: Package tarball
+        run: |
+          ver="${{ github.ref_name }}"
+          ver="${ver#v}"
+          tar -czf "Mediabox-${ver}-linux-arm64.tar.gz" -C dist Mediabox
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm64
+          path: Mediabox-*-linux-arm64.tar.gz
+
+  release:
+    needs: [build-windows, build-linux-arm64]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: artifacts
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: "Mediabox ${{ github.ref_name }}"
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          files: artifacts/**

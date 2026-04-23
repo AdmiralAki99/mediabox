@@ -1,14 +1,3 @@
-"""
-Sports router — live sports categories, matches, and stream resolution.
-
-Route order matters — literal path segments must come before param segments:
-  GET /                                  — list sport categories
-  GET /resolve/{match_id}/{source_id}    — curl_cffi scraping pipeline → m3u8 URLs
-  GET /proxy                             — HLS segment proxy (adds Referer for CDN)
-  GET /stream/{match_id}/{source_id}     — raw embed URL from streami.su (legacy)
-  GET /{sport_id}/matches                — list matches for a sport
-"""
-
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -39,7 +28,6 @@ def get_sports_http() -> httpx.AsyncClient:
 async def list_sports(
     service: SportsService = Depends(get_sports_service),
 ) -> list[Sport]:
-    """List all available sport categories (football, basketball, tennis, etc.)."""
     try:
         return await service.get_sports()
     except Exception as exc:
@@ -52,17 +40,6 @@ async def resolve_sport_stream(
     source_id: str,
     service: SportsService = Depends(get_sports_service),
 ) -> SportStreamResolved:
-    """
-    Resolve a live sports stream (browser-free, curl_cffi scraping).
-
-    1. Attempts to get the embed URL from streami.su/api/stream/{match_id}/{source_id}.
-    2. Falls back to streamed.su/api/stream if that endpoint is blocked.
-    3. Fetches the embed page with curl_cffi (Chrome TLS impersonation).
-    4. Regexes the HTML/JS source for .m3u8 URLs.
-
-    Works when the embed player includes the stream URL statically.
-    Returns 404 if the player loads the URL dynamically (JS-only execution needed).
-    """
     try:
         result = await service.resolve_sport_stream(match_id, source_id)
         if not result.urls:
@@ -80,14 +57,6 @@ async def proxy_sports_hls(
     referrer: str = Query("", description="Referer header to send to the CDN"),
     client: httpx.AsyncClient = Depends(get_sports_http),
 ) -> StreamingResponse:
-    """
-    Proxy HLS manifest/segment requests for live sports CDNs.
-
-    Sports CDN URLs (poocloud.in, vdcast.live, embedsports.top, strmd.top) require
-    a specific Referer and Origin that a browser cannot set via JavaScript.
-    The SportsPlayer routes all HLS.js requests through this endpoint so the
-    backend can add the correct headers before forwarding to the CDN.
-    """
     headers: dict[str, str] = {"User-Agent": _UA}
     if referrer:
         headers["Referer"] = referrer
@@ -126,10 +95,6 @@ async def get_sport_stream(
     source_id: str,
     service: SportsService = Depends(get_sports_service),
 ) -> SportStream:
-    """
-    Raw embed URL from streami.su for a specific match source.
-    (This endpoint may be blocked — use /resolve for actual m3u8 resolution.)
-    """
     try:
         return await service.get_stream(match_id, source_id)
     except ValueError as exc:
@@ -143,12 +108,6 @@ async def list_matches(
     sport_id: str,
     service: SportsService = Depends(get_sports_service),
 ) -> list[Match]:
-    """
-    List live and upcoming matches for a sport category.
-
-    Each match includes a `sources` array — pass a source's `id` to
-    GET /sports/resolve/{match_id}/{source_id} to get the playable stream URLs.
-    """
     try:
         return await service.get_matches(sport_id)
     except Exception as exc:
