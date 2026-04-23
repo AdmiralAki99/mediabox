@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+api/venv/
+api/venv_wsl/
+api/venv_build/
+app-qt/venv/
+
+# Environment / secrets
+.env
+*.env.local
+
+# Logs
+*.log
+log.txt
+qt_debug.log
+qt_err.log
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Build output (PyInstaller)
+dist/
+build/
+
+# Node / frontend
+node_modules/
+app/dist/
+app/.vite/
+
+# Tauri
+app/src-tauri/target/
+
+# Runtime
+api/downloads/
+
+# Probe / debug scripts and screenshots (dev artifacts)
+api/probe_*
+
+# Temp / scratch
+tmp*.qml
+refs/
+ref/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*~
