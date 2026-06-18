@@ -20,6 +20,16 @@ A self-hosted media centre application built for the Raspberry Pi CM5. Streams m
 Everything runs locally on the device — no cloud, no tracking, no monthly fee.
 
 ---
+## Current Status & Notes
+
+**Project Status**: This backend system is currently undergoing a structural architectural rewrite to optimize concurrency and data ingestion layers.
+
+---
+## Active Refactoring
+
+*Note on Project Status*: The distributed backend component is currently undergoing a structural architectural rewrite to optimize concurrency and data ingestion. Test suites are being decoupled and redeployed alongside the new modules.
+
+---
 
 ## Architecture
 

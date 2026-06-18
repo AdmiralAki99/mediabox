@@ -14,3 +14,7 @@ curl-cffi
 beautifulsoup4
 lxml
 zlibrary
+
+# test deps
+pytest
+pytest-asyncio
